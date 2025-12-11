@@ -1,0 +1,16 @@
+[project]
+name = "episcan"
+version = "0.1.0"
+description = "Match TV episodes using audio transcription and episode subtitles"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "openai-whisper>=20250625",
+    "platformdirs>=3.0.0",
+    "pysubs2>=1.6.0",
+    "scipy>=1.11.0",
+    "sentence-transformers>=2.2.2",
+    "subliminal>=2.1.0",
+    "tmdbsimple>=2.9.1",
+    "tvdb-v4-official>=1.1.0",
+]

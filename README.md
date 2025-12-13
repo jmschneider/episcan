@@ -8,24 +8,29 @@ Match TV episodes using audio transcription and episode subtitles (default) or d
 - **Time-Synchronized Comparison**: Compares matching time segments for fair subtitle-to-subtitle comparison
 - **Smart Subtitle Track Selection**: Finds best matching video subtitle track using similarity analysis
 - **Comprehensive Subtitle Caching**: OS-appropriate cache storage with automatic management
-- **Multiple Subtitle Sources**:
+- **Enhanced Subtitle Provider Support**:
   - Local subtitle files (`--subtitles-dir`)
   - Embedded video subtitles (`--try-subtitles`)
-  - Subliminal library (default) - Dynamic provider discovery, no API key needed
+  - Subliminal library (default) - Multiple providers with authentication support
+  - External ID matching (TMDB/TVDB/IMDB) for better provider accuracy
+- **Robust Subtitle Retry System**:
+  - Configurable retry attempts with exponential backoff (default: 5 retries)
+  - Smart failure handling (exit/prompt/continue after retries exhausted)
 - **Intelligent Transcription Defaults**:
   - Subtitle comparison: 3 minutes starting at 1 minute (skips intros)
   - Description comparison: Full episode transcription
 - **Universal Subtitle Support**: Handles SRT, WebVTT, ASS/SSA, MicroDVD, MPL2, TMP, and JSON formats via pysubs2
+- **Advanced File Management**: Smart conflict resolution for renaming with file preservation
 - **Optimal Episode Matching**: Uses SBERT embeddings and Hungarian algorithm for unique assignments
 - **GPU Acceleration**: CUDA support for both Whisper and sentence transformers
 - **Memory Efficient**: Conditional model loading saves resources when not needed
 - **Progress Tracking**: ETA calculations and detailed processing feedback
-- **Multiple APIs**: TMDB (preferred) and TVDB support
+- **Multiple APIs**: TMDB (preferred) and TVDB support with external ID enrichment
 
 ## Quick Start
 
 ```bash
-# Default: Use subliminal for subtitle downloads with caching, 3-minute excerpt comparison
+# Default: Use subliminal for subtitle downloads with 5 retry attempts
 uv run python main.py /path/to/videos
 
 # Use local subtitle files
@@ -33,6 +38,9 @@ uv run python main.py /path/to/videos --subtitles-dir /path/to/subtitles
 
 # Compare against episode descriptions instead
 uv run python main.py /path/to/videos --use-descriptions
+
+# Custom retry behavior: 3 retries, then continue anyway
+uv run python main.py /path/to/videos --subtitle-retries 3 --on-subtitle-failure continue
 
 # Clear cache and disable caching for fresh downloads
 uv run python main.py /path/to/videos --clear-cache --no-cache
@@ -80,8 +88,14 @@ episcan /path/to/videos --max-duration 300 --start-offset 30
 ### Environment Variables
 
 ```bash
-export TMDB_API_KEY="your_tmdb_key"      # Preferred
-export TVDB_API_KEY="your_tvdb_key"      # Fallback
+export TMDB_API_KEY="your_tmdb_key"             # Preferred
+export TVDB_API_KEY="your_tvdb_key"             # Fallback
+
+# Optional: Subtitle provider authentication (improves success rates)
+export ADDIC7ED_USERNAME="your_username"        # Addic7ed account
+export ADDIC7ED_PASSWORD="your_password"
+export OPENSUBTITLES_USERNAME="your_username"   # OpenSubtitles account  
+export OPENSUBTITLES_PASSWORD="your_password"
 ```
 
 ## How It Works
@@ -89,12 +103,14 @@ export TVDB_API_KEY="your_tvdb_key"      # Fallback
 ### Subtitle Comparison (Default)
 
 1. **Check Cache**: Looks for previously downloaded subtitles in OS-appropriate cache directory
-2. **Download Subtitles**: Uses subliminal with dynamic provider discovery for episode subtitles
-3. **Cache Storage**: Saves downloaded subtitles with metadata for future use
-4. **Time-Synchronized Extraction**: For partial transcription, extracts matching time segments from episode subtitles
-5. **Smart Track Selection**: When using `--try-subtitles`, finds video subtitle track with best similarity to episode content
-6. **Fair Comparison**: Compares equivalent content (3min transcript vs 3min subtitle segment)
-7. **Optimal Assignment**: Uses Hungarian algorithm to ensure unique episode matches
+2. **Download Subtitles**: Uses subliminal with enhanced provider configurations and external ID matching
+3. **Enhanced Matching**: Utilizes TMDB/TVDB/IMDB IDs for better provider accuracy
+4. **Retry System**: Automatically retries failed downloads with exponential backoff (2s→4s→8s→16s→32s)
+5. **Cache Storage**: Saves downloaded subtitles with metadata for future use
+6. **Time-Synchronized Extraction**: For partial transcription, extracts matching time segments from episode subtitles
+7. **Smart Track Selection**: When using `--try-subtitles`, finds video subtitle track with best similarity to episode content
+8. **Fair Comparison**: Compares equivalent content (3min transcript vs 3min subtitle segment)
+9. **Optimal Assignment**: Uses Hungarian algorithm to ensure unique episode matches
 
 ### Description Comparison
 
@@ -107,42 +123,47 @@ export TVDB_API_KEY="your_tvdb_key"      # Fallback
 **Priority Order:**
 
 1. **Local Files** (`--subtitles-dir`) - Custom subtitle directory
-2. **Subliminal** (default) - Dynamic provider discovery with caching:
-   - Automatically detects all available providers
-   - Intelligent fallback strategy (all → reliable → OpenSubtitles only)
+2. **Subliminal** (default) - Enhanced provider support with authentication:
+   - Multiple provider strategies with intelligent fallback
+   - External ID matching (TMDB/TVDB/IMDB) for better accuracy
+   - Optional authentication for Addic7ed and OpenSubtitles (via environment variables)
+   - Configurable retry system with exponential backoff (default: 5 attempts)
    - OS-appropriate cache storage (macOS: `~/Library/Caches/episcan/`)
    - Cache hits eliminate re-downloads for repeated processing
 
 ## Why Subliminal?
 
-- **Zero Configuration**: No API keys required
-- **Dynamic Provider Discovery**: Automatically uses all available providers
-- **High Success Rate**: Intelligent fallback strategy increases subtitle availability
-- **Smart Caching**: Prevents re-downloads with persistent storage
+- **Enhanced Provider Support**: Multiple subtitle providers with authentication for higher success rates
+- **External ID Matching**: Uses TMDB/TVDB/IMDB IDs for more accurate content matching
+- **Robust Retry System**: Automatic retries with exponential backoff for temporary failures
+- **Smart Caching**: Prevents re-downloads with persistent storage and metadata
 - **Format Support**: Handles various subtitle formats automatically
-- **Respectful**: Built-in rate limiting and provider rotation
+- **Respectful**: Built-in rate limiting and intelligent provider rotation
+- **Zero Configuration**: Works without API keys, but supports authentication for better results
 
 ## Command Line Options
 
 ```
 positional arguments:
-  video_dir             Directory containing video files (default: current directory)
+  video_dir                Directory containing video files (default: current directory)
 
 options:
-  --tvdb-api-key        TVDB API key (or use TVDB_API_KEY environment variable)
-  --tmdb-api-key        TMDB API key (or use TMDB_API_KEY environment variable)
-  --subtitles-dir       Directory containing subtitle files for episodes
-  --use-descriptions    Use episode descriptions instead of subtitles (default: use subtitles)
-  --force-tvdb          Force TVDB even if TMDB key available
-  --whisper-model       Whisper model: tiny, base, small, medium, large (default: base)
-  --sbert-model         Sentence transformer model (default: all-mpnet-base-v2)
-  --max-duration        Transcription duration in seconds (default: 180 for subtitles, 0=full)
-  --start-offset        Skip intro seconds (default: 60)
-  --rename              File renaming: none, prompt, auto (default: none)
-  --try-subtitles       Try embedded subtitles first, fallback to Whisper
-  --clear-cache         Clear subtitle cache before processing
-  --no-cache            Disable subtitle caching (always download fresh)
-  --verbose             Detailed processing information
+  --tvdb-api-key           TVDB API key (or use TVDB_API_KEY environment variable)
+  --tmdb-api-key           TMDB API key (or use TMDB_API_KEY environment variable)
+  --subtitles-dir          Directory containing subtitle files for episodes
+  --use-descriptions       Use episode descriptions instead of subtitles (default: use subtitles)
+  --force-tvdb             Force TVDB even if TMDB key available
+  --whisper-model          Whisper model: tiny, base, small, medium, large (default: base)
+  --sbert-model            Sentence transformer model (default: all-mpnet-base-v2)
+  --max-duration           Transcription duration in seconds (default: 180 for subtitles, 0=full)
+  --start-offset           Skip intro seconds (default: 60)
+  --rename                 File renaming: none, prompt, auto (default: none)
+  --try-subtitles          Try embedded subtitles first, fallback to Whisper
+  --subtitle-retries       Number of retry attempts for missing subtitles (default: 5)
+  --on-subtitle-failure    Action when subtitles still missing after retries: exit, prompt, continue (default: exit)
+  --clear-cache            Clear subtitle cache before processing
+  --no-cache               Disable subtitle caching (always download fresh)
+  --verbose                Detailed processing information
 ```
 
 ## Supported Subtitle Formats
@@ -161,12 +182,14 @@ Thanks to **pysubs2** integration, episcan supports all major subtitle formats:
 
 ```
 Using TMDB API
+Found series: Breaking Bad (TMDB ID: 1396, Year: 2008)
+  External IDs - IMDB: tt0903747, TVDB: 81189
 Loading sentence transformer model (sentence-transformers/all-mpnet-base-v2) on cuda...
-Loading Whisper model on cuda...
 Found 8 video files
 Detected: Breaking Bad Season 1
 Fetching episode subtitles using subliminal...
-Found 8 episodes for Breaking Bad Season 1
+  Attempting to get subtitles for 8 episodes (checking cache first)...
+✓ All episodes have subtitles
 Processing 8 video files...
   1/8: episode1.mkv ✓ (12.3s)
   2/8: episode2.mkv ✓ (11.8s)
@@ -177,11 +200,16 @@ Calculating optimal matches...
 === FINAL MATCHES ===
 ✓ episode1.mkv -> S01E01 - Pilot
   Similarity: 0.847
-  Method: sbert_similarity
 
 → episode5.mkv -> S01E05 - Gray Matter
   Similarity: 0.723
-  Method: sbert_similarity
+
+=== FILE RENAMING ===
+Planned renames:
+  episode1.mkv → Breaking Bad - S01E01 - Pilot.mkv
+  episode5.mkv → Breaking Bad - S01E05 - Gray Matter.mkv
+
+Renamed 8/8 files successfully
 ```
 
 ## Performance Tips
@@ -206,14 +234,29 @@ Calculating optimal matches...
 
 ### Common Issues
 
-**No subtitles found:**
+**Missing subtitles despite retries:**
 
 ```bash
-# Install subliminal if missing
-uv add subliminal
+# Set provider credentials for better access
+export ADDIC7ED_USERNAME="your_user"
+export ADDIC7ED_PASSWORD="your_pass"
+
+# Increase retry attempts
+episcan /path/to/videos --subtitle-retries 10
+
+# Continue anyway with partial coverage
+episcan /path/to/videos --on-subtitle-failure continue
 
 # Use description comparison as fallback
 episcan /path/to/videos --use-descriptions
+```
+
+**File renaming conflicts:**
+
+```bash
+# Conflicts are automatically resolved with UUID preservation
+# Files are never deleted - conflicting files get UNMATCHED_ prefix
+# Example: "Show - S01E01.mkv" becomes "UNMATCHED_Show - S01E01_a1b2c3d4.mkv"
 ```
 
 **Poor matching accuracy:**
@@ -226,10 +269,10 @@ episcan /path/to/videos --max-duration 0
 episcan /path/to/videos --whisper-model medium --sbert-model sentence-transformers/all-mpnet-base-v2
 ```
 
-**API Rate Limiting:**
+**Subtitle provider rate limiting:**
 
 ```bash
-# Use longer delays (subliminal handles this automatically)
+# Automatic exponential backoff handles most rate limiting
 # For persistent issues, try local subtitle files
 episcan /path/to/videos --subtitles-dir /path/to/subtitles
 ```

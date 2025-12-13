@@ -13,5 +13,4 @@ dependencies = [
     "subliminal>=2.1.0",
     "tmdbsimple>=2.9.1",
     "tvdb-v4-official>=1.1.0",
-    "tvnamer>=3.0.4",
 ]

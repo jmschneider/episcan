@@ -153,7 +153,6 @@ dependencies = [
     { name = "subliminal" },
     { name = "tmdbsimple" },
     { name = "tvdb-v4-official" },
-    { name = "tvnamer" },
 ]
 
 [package.metadata]
@@ -166,7 +165,6 @@ requires-dist = [
     { name = "subliminal", specifier = ">=2.1.0" },
     { name = "tmdbsimple", specifier = ">=2.9.1" },
     { name = "tvdb-v4-official", specifier = ">=1.1.0" },
-    { name = "tvnamer", specifier = ">=3.0.4" },
 ]
 
 [[package]]
@@ -667,18 +665,6 @@ wheels = [
 ]
 
 [[package]]
-name = "requests-cache"
-version = "0.5.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0c/d4/bdc22aad6979ceeea2638297f213108aeb5e25c7b103fa02e4acbe43992e/requests-cache-0.5.2.tar.gz", hash = "sha256:813023269686045f8e01e2289cc1e7e9ae5ab22ddd1e2849a9093ab3ab7270eb", size = 31159, upload-time = "2019-08-14T13:59:39.167Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/55/9b1c40eb83c16d8fc79c5f6c2ffade04208b080670fbfc35e0a5effb5a92/requests_cache-0.5.2-py2.py3-none-any.whl", hash = "sha256:81e13559baee64677a7d73b85498a5a8f0639e204517b5d05ff378e44a57831a", size = 22356, upload-time = "2019-08-14T13:59:37.489Z" },
-]
-
-[[package]]
 name = "safetensors"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1032,16 +1018,6 @@ wheels = [
 ]
 
 [[package]]
-name = "tvdb-api"
-version = "3.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-    { name = "requests-cache" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/66/7f9c6737be8524815a02dd2edd3a24718fa786614573104342eae8d2d08b/tvdb_api-3.1.0.tar.gz", hash = "sha256:f63f6db99441bb202368d44aaabc956acc4202b18fc343a66bf724383ee1f563", size = 23123, upload-time = "2021-04-29T02:44:19.496Z" }
-
-[[package]]
 name = "tvdb-v4-official"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1049,15 +1025,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/8d/63/1ee5d021451205daa
 wheels = [
     { url = "https://files.pythonhosted.org/packages/50/d2/3f3e03fe96c23701fa24890dcd393034f4d37fb1e4649f573b1a6f3cf994/tvdb_v4_official-1.1.0-py3-none-any.whl", hash = "sha256:1d66f87f7d3d36feb4923b37aefd5a048dd208096bc640d1898acb1956fc0ba1", size = 3801, upload-time = "2022-09-22T19:11:49.819Z" },
 ]
-
-[[package]]
-name = "tvnamer"
-version = "3.0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "tvdb-api" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/07/688dc96a86cf212ffdb291d2f012bc4a41ee78324a2eda4c98f05f5e3062/tvnamer-3.0.4.tar.gz", hash = "sha256:dc2ea8188df6ac56439343630466b874c57756dd0b2538dd8e7905048f425f04", size = 47658, upload-time = "2021-05-23T09:36:13.18Z" }
 
 [[package]]
 name = "typing-extensions"

@@ -25,13 +25,6 @@ try:
 except ImportError:
     SUBLIMINAL_AVAILABLE = False
 
-# Try to import tvnamer for enhanced filename parsing
-try:
-    import tvnamer.utils as tvnamer_utils
-    TVNAMER_AVAILABLE = True
-except ImportError:
-    TVNAMER_AVAILABLE = False
-
 # ANSI color codes
 class Colors:
     RED = '\033[91m'
@@ -426,7 +419,7 @@ def main():
 
 def get_video_files(video_dir):
     """Get all video files from directory"""
-    video_extensions = {'.mp4', '.m4v', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
+    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
     video_paths = []
     
     for name in os.listdir(video_dir):
@@ -967,90 +960,42 @@ def load_local_episode_subtitles(show_info, episodes_data, subtitles_dir, verbos
     return subtitles_data
 
 def find_matching_subtitle_file(episode, show_info, subtitle_files, verbose=False):
-    """Find subtitle file that matches the episode using tvnamer parser or fallback pattern matching"""
-    season_num = show_info['season']
-    episode_num = episode['number']
+    """Find subtitle file that matches the episode"""
+    season_str = f"S{show_info['season']:02d}"
+    episode_str = f"E{episode['number']:02d}"
+    episode_patterns = [
+        f"{season_str}{episode_str}",  # S01E05
+        f"{show_info['season']}x{episode['number']:02d}",  # 1x05
+        f"Season {show_info['season']} Episode {episode['number']}",  # Season 1 Episode 5
+        f"s{show_info['season']:02d}e{episode['number']:02d}",  # s01e05
+        episode['name'].lower().replace(' ', '.'),  # episode.name
+    ]
     
     # Score each subtitle file
     best_match = None
     best_score = 0
     
     for subtitle_file in subtitle_files:
-        filename = os.path.basename(subtitle_file)
+        filename = os.path.basename(subtitle_file).lower()
         score = 0
-        
-        # Try tvnamer parsing first if available
-        if TVNAMER_AVAILABLE:
-            try:
-                parsed = tvnamer_utils.FileParser(filename).parse()
-                
-                # Check if we have season/episode info
-                if parsed.seasonnumber is not None and parsed.episodenumbers:
-                    parsed_season = parsed.seasonnumber
-                    # Handle single episode or episode list
-                    parsed_episodes = parsed.episodenumbers
-                    episode_matches = episode_num in parsed_episodes
-                    
-                    if parsed_season == season_num and episode_matches:
-                        score += 50  # High score for exact tvnamer match
-                        
-                        # Bonus for show title match
-                        if parsed.seriesname:
-                            parsed_title = parsed.seriesname.lower()
-                            show_title = show_info['show'].lower()
-                            if parsed_title in show_title or show_title in parsed_title:
-                                score += 20
-                        
-                        if verbose:
-                            print(f"    tvnamer match: {filename} -> S{parsed_season}E{parsed_episodes} (score: {score})")
-                        
-                        if score > best_score:
-                            best_score = score
-                            best_match = subtitle_file
-                        continue
-                
-            except Exception as e:
-                if verbose:
-                    print(f"    tvnamer parse failed for {filename}: {e}")
-                # Fall through to manual pattern matching
-        
-        # Fallback to manual pattern matching if tvnamer not available or failed
-        filename_lower = filename.lower()
-        season_str = f"S{season_num:02d}"
-        episode_str = f"E{episode_num:02d}"
-        
-        episode_patterns = [
-            f"{season_str}{episode_str}",  # S01E05
-            f"{season_num}x{episode_num:02d}",  # 1x05
-            f"Season {season_num} Episode {episode_num}",  # Season 1 Episode 5
-            f"s{season_num:02d}e{episode_num:02d}",  # s01e05
-            episode['name'].lower().replace(' ', '.'),  # episode.name
-        ]
         
         # Check for episode patterns
         for pattern in episode_patterns:
-            if pattern.lower() in filename_lower:
+            if pattern.lower() in filename:
                 score += 10
                 break
         
         # Check for show name
-        if show_info['show'].lower().replace(' ', '.') in filename_lower.replace(' ', '.'):
+        if show_info['show'].lower().replace(' ', '.') in filename.replace(' ', '.'):
             score += 5
         
         # Prefer files with exact season/episode match
-        if f"{season_str.lower()}{episode_str.lower()}" in filename_lower:
+        if f"{season_str.lower()}{episode_str.lower()}" in filename:
             score += 20
-        
-        if verbose and score > 0:
-            print(f"    manual match: {filename}: score {score}")
         
         if score > best_score:
             best_score = score
             best_match = subtitle_file
-    
-    if verbose and best_match:
-        method = "tvnamer" if TVNAMER_AVAILABLE and best_score >= 50 else "manual"
-        print(f"  Best match ({method}): {os.path.basename(best_match)} (score: {best_score})")
     
     return best_match if best_score > 0 else None
 

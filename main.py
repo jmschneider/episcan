@@ -419,7 +419,7 @@ def main():
 
 def get_video_files(video_dir):
     """Get all video files from directory"""
-    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
+    video_extensions = {'.mp4', '.m4v', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
     video_paths = []
     
     for name in os.listdir(video_dir):

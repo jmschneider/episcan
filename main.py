@@ -1430,6 +1430,13 @@ def rename_files(matches, rename_mode, show_info):
                 conflict_filename = f"{base_name}_{str(uuid.uuid4())[:8]}{ext}"
                 conflict_path = os.path.join(os.path.dirname(new_path), conflict_filename)
                 
+                # Check if this target file is also a source file in our rename map
+                # If so, we need to track where it's been moved to
+                for source_path, target_path in rename_map.items():
+                    if source_path == new_path:
+                        moved_sources[source_path] = conflict_path
+                        break
+                
                 os.rename(new_path, conflict_path)
                 preserved_files.append((os.path.basename(new_path), conflict_filename))
                 print(f"    {Colors.CYAN}📁 Preserved: {os.path.basename(new_path)} -> {conflict_filename}{Colors.END}")

@@ -267,6 +267,52 @@ def main():
     
     print(f"Found {len(episodes_data)} episodes for {show_info['show']} Season {show_info['season']}")
     
+    # Check subtitle coverage if using subtitle comparison
+    if args.use_subtitles_comparison:
+        episodes_with_subtitles = sum(1 for ep in episodes_data if 'subtitle_text' in ep and ep['subtitle_text'])
+        total_episodes = len(episodes_data)
+        
+        if episodes_with_subtitles < total_episodes:
+            missing_count = total_episodes - episodes_with_subtitles
+            print(f"\n{Colors.YELLOW}⚠ Warning: Only {episodes_with_subtitles}/{total_episodes} episodes have subtitles ({missing_count} missing){Colors.END}")
+            
+            # Retry with specified number of attempts
+            max_retries = args.subtitle_retries
+            if max_retries > 0:
+                print(f"{Colors.CYAN}Retrying subtitle download with {max_retries} attempts...{Colors.END}")
+                episodes_data = retry_missing_subtitles(show_info, episodes_data, max_retries, args.verbose, args.no_cache)
+                
+                # Check coverage again after retries
+                final_episodes_with_subtitles = sum(1 for ep in episodes_data if 'subtitle_text' in ep and ep['subtitle_text'])
+                final_missing = total_episodes - final_episodes_with_subtitles
+                
+                if final_missing == 0:
+                    print(f"{Colors.GREEN}✓ All episodes now have subtitles after retries!{Colors.END}")
+                elif final_missing < missing_count:
+                    print(f"{Colors.YELLOW}✓ Found subtitles for {missing_count - final_missing} more episodes. {final_missing} still missing.{Colors.END}")
+                else:
+                    print(f"{Colors.YELLOW}⚠ {final_missing} episodes still missing subtitles after {max_retries} retries.{Colors.END}")
+                
+                # Update missing count for final action decision
+                missing_count = final_missing
+            
+            # Handle remaining missing subtitles based on failure action
+            if missing_count > 0:
+                if args.on_subtitle_failure == 'exit':
+                    print(f"{Colors.RED}Exiting due to missing subtitles. Use --on-subtitle-failure=continue to proceed anyway.{Colors.END}")
+                    return
+                elif args.on_subtitle_failure == 'prompt':
+                    response = input(f"\n{Colors.YELLOW}Continue with {missing_count} missing subtitles? (y/n): {Colors.END}").strip().lower()
+                    if response not in ['y', 'yes']:
+                        print(f"{Colors.YELLOW}Operation cancelled{Colors.END}")
+                        return
+                    else:
+                        print(f"{Colors.GREEN}Continuing with available subtitles...{Colors.END}")
+                elif args.on_subtitle_failure == 'continue':
+                    print(f"{Colors.YELLOW}Continuing with {missing_count} missing subtitles...{Colors.END}")
+        else:
+            print(f"{Colors.GREEN}✓ All episodes have subtitles{Colors.END}")
+    
     # Process each video file and collect all transcripts
     video_transcripts = {}
     print(f"Processing {len(video_paths)} video files...")
@@ -599,7 +645,14 @@ def get_subliminal_episode_subtitles(show_info, episodes_data, verbose=False, no
                             languages={'en'},
                             providers=providers,
                             provider_configs={
-                                'opensubtitles': {'username': '', 'password': ''},  # Use anonymous
+                                'opensubtitles': {
+                                    'username': os.getenv('OPENSUBTITLES_USERNAME', ''), 
+                                    'password': os.getenv('OPENSUBTITLES_PASSWORD', '')
+                                },
+                                'addic7ed': {
+                                    'username': os.getenv('ADDIC7ED_USERNAME', ''),
+                                    'password': os.getenv('ADDIC7ED_PASSWORD', '')
+                                }
                             }
                         )
                         
@@ -686,6 +739,151 @@ def get_subliminal_episode_subtitles(show_info, episodes_data, verbose=False, no
         print(f"  Results: {cache_hits} from cache, {downloads} downloaded, {subtitle_count}/{len(episodes_data)} total with subtitles")
     
     return subtitles_data
+
+def retry_missing_subtitles(show_info, episodes_data, max_retries, verbose=False, no_cache=False):
+    """Retry downloading subtitles for episodes that don't have them, with exponential backoff"""
+    import tempfile
+    from pathlib import Path
+    
+    missing_episodes = [ep for ep in episodes_data if 'subtitle_text' not in ep or not ep['subtitle_text']]
+    if not missing_episodes:
+        return episodes_data
+    
+    if verbose:
+        print(f"\n{Colors.YELLOW}Retrying subtitle download for {len(missing_episodes)} episodes...{Colors.END}")
+    
+    for retry_attempt in range(max_retries):
+        if not missing_episodes:
+            break
+            
+        backoff_delay = 2 * (2 ** retry_attempt)  # Exponential backoff: 2s, 4s, 8s, 16s...
+        
+        if verbose:
+            print(f"\n  Retry attempt {retry_attempt + 1}/{max_retries} (delay: {backoff_delay}s)...")
+        
+        if retry_attempt > 0:
+            print(f"    Waiting {backoff_delay} seconds...")
+            time.sleep(backoff_delay)
+        
+        newly_found = []
+        still_missing = []
+        
+        for episode in missing_episodes:
+            if verbose:
+                print(f"    Retrying Episode {episode['number']}...")
+            
+            # Try again with same logic as original download
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                
+                try:
+                    # Create enhanced fake video file
+                    clean_episode_name = re.sub(r'[<>:"/\\|?*]', '', episode.get('name', 'Unknown')).strip()
+                    episode_filename = f"{show_info['show']}.S{show_info['season']:02d}E{episode['number']:02d}.{clean_episode_name}.mkv"
+                    fake_video_path = temp_path / episode_filename
+                    fake_video_path.touch()
+                    
+                    # Create Episode object
+                    video = Episode(
+                        name=str(fake_video_path),
+                        series=show_info['show'],
+                        season=show_info['season'],
+                        episodes=[episode['number']],
+                        title=episode.get('name', 'Unknown'),
+                        year=episode.get('year'),
+                        imdb_id=episode.get('imdb_id'),
+                        size=0,
+                    )
+                    
+                    # Try providers with longer delay
+                    try:
+                        all_providers = list(provider_manager.names())
+                        reliable_providers = ['opensubtitles', 'podnapisi', 'addic7ed']
+                        reliable_providers = [p for p in reliable_providers if p in all_providers]
+                    except Exception:
+                        all_providers = None
+                        reliable_providers = ['opensubtitles', 'podnapisi']
+                    
+                    # Only try reliable providers for retries
+                    subtitles = download_best_subtitles(
+                        [video], 
+                        languages={'en'},
+                        providers=reliable_providers,
+                        provider_configs={
+                            'opensubtitles': {
+                                'username': os.getenv('OPENSUBTITLES_USERNAME', ''), 
+                                'password': os.getenv('OPENSUBTITLES_PASSWORD', '')
+                            },
+                            'addic7ed': {
+                                'username': os.getenv('ADDIC7ED_USERNAME', ''),
+                                'password': os.getenv('ADDIC7ED_PASSWORD', '')
+                            }
+                        }
+                    )
+                    
+                    if subtitles and video in subtitles and subtitles[video]:
+                        best_subtitle = max(subtitles[video], key=lambda s: getattr(s, 'score', 0))
+                        
+                        try:
+                            subtitle_text = best_subtitle.content.decode('utf-8') if best_subtitle.content else ''
+                        except UnicodeDecodeError:
+                            try:
+                                subtitle_text = best_subtitle.content.decode('latin-1') if best_subtitle.content else ''
+                            except:
+                                subtitle_text = ''
+                        
+                        if subtitle_text:
+                            clean_text = parse_subtitle_content(subtitle_text)
+                            
+                            if clean_text:
+                                # Save to cache
+                                if not no_cache:
+                                    save_subtitle_to_cache(
+                                        show_info['show'], 
+                                        show_info['season'], 
+                                        episode['number'],
+                                        subtitle_text,
+                                        clean_text,
+                                        best_subtitle.provider_name
+                                    )
+                                
+                                # Update episode data
+                                episode['subtitle_text'] = clean_text
+                                episode['subtitle_content'] = subtitle_text
+                                newly_found.append(episode)
+                                
+                                if verbose:
+                                    print(f"      ✓ Found subtitles ({len(clean_text)} chars) from {best_subtitle.provider_name}")
+                                continue
+                    
+                    # Still no subtitles found
+                    still_missing.append(episode)
+                    if verbose:
+                        print(f"      ✗ Still no subtitles found")
+                        
+                except Exception as e:
+                    still_missing.append(episode)
+                    if verbose:
+                        print(f"      ✗ Error: {e}")
+                
+                # Rate limiting between episodes
+                time.sleep(1.0)
+        
+        missing_episodes = still_missing
+        
+        if newly_found:
+            if verbose:
+                print(f"    Found subtitles for {len(newly_found)} more episodes")
+        
+        if not missing_episodes:
+            if verbose:
+                print(f"    ✓ All episodes now have subtitles!")
+            break
+    
+    if missing_episodes and verbose:
+        print(f"    ✗ {len(missing_episodes)} episodes still missing subtitles after {max_retries} retries")
+    
+    return episodes_data
 
 def parse_subtitle_content(content):
     """Parse subtitle content and extract clean text using pysubs2"""
@@ -1478,10 +1676,16 @@ Transcription defaults:
   - Subtitle comparison: 3 minutes starting at 1 minute (skips intros)
   - Description comparison: Full episode transcription
 
+Subtitle Coverage:
+  Script retries missing subtitles 5 times by default, then exits if any still missing
+  Use --subtitle-retries and --on-subtitle-failure to customize behavior
+
 Examples:
-  %(prog)s /path/to/videos  # Uses subliminal, 3min excerpt
+  %(prog)s /path/to/videos  # Uses subliminal, 3min excerpt, 5 retries then exit
   %(prog)s /path/to/videos --use-descriptions  # Full episode vs descriptions
-  %(prog)s /path/to/videos --max-duration 0  # Force full episode transcription
+  %(prog)s /path/to/videos --subtitle-retries=10  # 10 retry attempts
+  %(prog)s /path/to/videos --on-subtitle-failure=continue  # Continue if missing
+  %(prog)s /path/to/videos --subtitle-retries=0  # No retries, exit immediately
         ''',
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("video_dir", nargs='?', default=".", help="Directory containing video files")
@@ -1511,6 +1715,10 @@ Examples:
     parser.add_argument('--try-subtitles', action='store_true', help="Try to extract subtitles first, fallback to Whisper if not found")
     parser.add_argument('--clear-cache', action='store_true', help="Clear subtitle cache before processing")
     parser.add_argument('--no-cache', action='store_true', help="Disable subtitle caching (always download fresh)")
+    parser.add_argument('--subtitle-retries', type=int, default=5,
+                       help="Number of retry attempts for missing subtitles (default: 5)")
+    parser.add_argument('--on-subtitle-failure', choices=['exit', 'prompt', 'continue'], default='exit',
+                       help="Action when subtitles still missing after retries: exit (default), prompt user, or continue anyway")
     return parser.parse_args()
 
 if __name__ == "__main__":

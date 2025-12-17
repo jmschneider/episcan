@@ -572,10 +572,10 @@ def get_subliminal_episode_subtitles(show_info, episodes_data, verbose=False, no
                     reliable_providers = ['opensubtitles', 'podnapisi']
                 
                 provider_strategies = [
-                    # First try: All available providers (let subliminal decide)
-                    all_providers,  
-                    # Second try: Just the most reliable ones
+                    # First try: Just the most reliable providers
                     reliable_providers,
+                    # Second try: All available providers (let subliminal decide)
+                    all_providers,  
                     # Last try: OpenSubtitles only
                     ['opensubtitles']
                 ]

@@ -1352,10 +1352,15 @@ def find_best_episode_match(transcript, episodes_data, model):
     return None
 
 def rename_files(matches, rename_mode, show_info):
-    """Rename video files based on episode matches using Plex-compatible naming"""
+    """Rename video files based on episode matches using Plex-compatible naming with conflict resolution"""
+    import uuid
+    
     print(f"\n{Colors.BOLD}{Colors.UNDERLINE}=== FILE RENAMING ==={Colors.END}")
     
-    rename_operations = []
+    # Build rename mapping
+    rename_map = {}  # old_path -> new_path
+    filename_map = {}  # old_path -> new_filename (for display)
+    
     for video_path, match in matches.items():
         # Get file extension
         _, ext = os.path.splitext(video_path)
@@ -1381,21 +1386,26 @@ def rename_files(matches, rename_mode, show_info):
         if video_path == new_path:
             continue
             
-        # Check if target file already exists
-        if os.path.exists(new_path):
-            print(f"  {Colors.YELLOW}⚠ SKIP: {os.path.basename(video_path)} -> {new_filename} (target exists){Colors.END}")
-            continue
-            
-        rename_operations.append((video_path, new_path, new_filename))
+        rename_map[video_path] = new_path
+        filename_map[video_path] = new_filename
     
-    if not rename_operations:
+    if not rename_map:
         print(f"  {Colors.GREEN}✓ No files need renaming{Colors.END}")
         return
     
-    # Show what will be renamed
+    # Show planned renames
     print(f"  {Colors.BOLD}Planned renames:{Colors.END}")
-    for old_path, new_path, new_filename in rename_operations:
-        print(f"    {Colors.RED}{os.path.basename(old_path)}{Colors.END} {Colors.WHITE}→{Colors.END} {Colors.GREEN}{new_filename}{Colors.END}")
+    conflicts = 0
+    for old_path, new_path in rename_map.items():
+        new_filename = filename_map[old_path]
+        if os.path.exists(new_path):
+            conflicts += 1
+            print(f"    {Colors.RED}{os.path.basename(old_path)}{Colors.END} {Colors.WHITE}→{Colors.END} {Colors.YELLOW}{new_filename} (conflict){Colors.END}")
+        else:
+            print(f"    {Colors.RED}{os.path.basename(old_path)}{Colors.END} {Colors.WHITE}→{Colors.END} {Colors.GREEN}{new_filename}{Colors.END}")
+    
+    if conflicts:
+        print(f"\n  {Colors.YELLOW}⚠ {conflicts} conflict(s) - existing files will be preserved with UUID suffix{Colors.END}")
     
     # Handle based on mode
     if rename_mode == 'prompt':
@@ -1404,18 +1414,49 @@ def rename_files(matches, rename_mode, show_info):
             print(f"  {Colors.YELLOW}Renaming cancelled{Colors.END}")
             return
     
-    # Perform the renames
+    # Execute renames
     print(f"\n  {Colors.BOLD}Renaming files...{Colors.END}")
-    success_count = 0
-    for old_path, new_path, new_filename in rename_operations:
-        try:
-            os.rename(old_path, new_path)
-            print(f"    {Colors.GREEN}✓ {os.path.basename(old_path)} -> {new_filename}{Colors.END}")
-            success_count += 1
-        except Exception as e:
-            print(f"    {Colors.RED}✗ Failed to rename {os.path.basename(old_path)}: {e}{Colors.END}")
     
-    print(f"\n  {Colors.BOLD}Renamed {Colors.GREEN}{success_count}{Colors.END}{Colors.BOLD}/{len(rename_operations)} files successfully{Colors.END}")
+    # Track what we've moved for the final rename phase
+    moved_sources = {}  # original_source_path -> current_source_path
+    preserved_files = []
+    
+    try:
+        # Step 1: Move any conflicting target files out of the way
+        for old_path, new_path in rename_map.items():
+            if os.path.exists(new_path):
+                # Create unique name for the conflicting file
+                base_name, ext = os.path.splitext(os.path.basename(new_path))
+                conflict_filename = f"{base_name}_{str(uuid.uuid4())[:8]}{ext}"
+                conflict_path = os.path.join(os.path.dirname(new_path), conflict_filename)
+                
+                os.rename(new_path, conflict_path)
+                preserved_files.append((os.path.basename(new_path), conflict_filename))
+                print(f"    {Colors.CYAN}📁 Preserved: {os.path.basename(new_path)} -> {conflict_filename}{Colors.END}")
+        
+        # Step 2: Do all the renames
+        success_count = 0
+        for old_path, new_path in rename_map.items():
+            try:
+                # Check if this source file was already moved in step 1
+                current_source = moved_sources.get(old_path, old_path)
+                
+                os.rename(current_source, new_path)
+                print(f"    {Colors.GREEN}✓ {os.path.basename(current_source)} -> {filename_map[old_path]}{Colors.END}")
+                success_count += 1
+                
+            except Exception as e:
+                print(f"    {Colors.RED}✗ Failed: {os.path.basename(old_path)} - {e}{Colors.END}")
+                
+    except Exception as e:
+        print(f"    {Colors.RED}✗ Critical error: {e}{Colors.END}")
+    
+    # Summary
+    summary_parts = [f"{Colors.GREEN}{success_count}{Colors.END}{Colors.BOLD}/{len(rename_map)} files renamed"]
+    if preserved_files:
+        summary_parts.append(f"{Colors.CYAN}{len(preserved_files)} files preserved{Colors.END}")
+    
+    print(f"\n  {Colors.BOLD}{', '.join(summary_parts)}{Colors.END}")
 
 def get_args():
     parser = argparse.ArgumentParser(
